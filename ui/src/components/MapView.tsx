@@ -1,114 +1,135 @@
-import React, { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { useScenarioStore } from '../store/useScenarioStore';
+import { MapboxOverlay } from '@deck.gl/mapbox';
+import { GeoJsonLayer } from '@deck.gl/layers';
+import { HeatmapLayer } from '@deck.gl/aggregation-layers';
+import { useOptimizeStore } from '../store/useOptimizeStore';
+import { cellsToGeoJson } from '../utils/cellsToGeoJson';
+import { colorByDominantType } from '../utils/colorByType';
+import CellTooltip from './CellTooltip';
+
+const HOUSTON_CENTER: [number, number] = [-95.3698, 29.7604];
 
 const MapView: React.FC = () => {
-    const mapContainer = useRef<HTMLDivElement>(null);
-    const map = useRef<maplibregl.Map | null>(null);
-    const [mapLoaded, setMapLoaded] = useState(false);
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<maplibregl.Map | null>(null);
+  const overlay = useRef<MapboxOverlay | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
 
-    const { trees, isOptimizing, timeHorizon } = useScenarioStore();
+  const { result, visibleLayers, setHoveredCell, hoveredCell, jobStatus } =
+    useOptimizeStore();
 
-    // Initialize Map
-    useEffect(() => {
-        if (map.current || !mapContainer.current) return;
+  // --- Init map ---
+  useEffect(() => {
+    if (map.current || !mapContainer.current) return;
 
-        map.current = new maplibregl.Map({
-            container: mapContainer.current,
-            style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-            center: [-95.3698, 29.7604],
-            zoom: 11
-        });
+    map.current = new maplibregl.Map({
+      container: mapContainer.current,
+      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+      center: HOUSTON_CENTER,
+      zoom: 10,
+    });
 
-        map.current.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+    map.current.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
-        map.current.on('load', () => {
-            setMapLoaded(true);
-        });
+    overlay.current = new MapboxOverlay({ layers: [] });
+    map.current.addControl(overlay.current as unknown as maplibregl.IControl);
 
-        return () => {
-            map.current?.remove();
-            map.current = null;
-            setMapLoaded(false);
-        };
-    }, []);
+    map.current.on('load', () => setMapLoaded(true));
 
-    // Render tree markers
-    useEffect(() => {
-        if (!map.current || !mapLoaded) return;
+    return () => {
+      overlay.current?.finalize();
+      map.current?.remove();
+      map.current = null;
+    };
+  }, []);
 
-        const treeFeatures = trees.map(tree => {
-            // Logic for size visualization based on time horizon
-            const yearsGrown = Math.max(0, timeHorizon - tree.yearPlanted);
-            const isVisible = tree.yearPlanted <= timeHorizon;
+  // --- Update deck.gl layers when result or visibility changes ---
+  useEffect(() => {
+    if (!mapLoaded || !overlay.current) return;
 
-            let baseRadius = 5;
-            if (tree.type === 'Medium') baseRadius = 8;
-            if (tree.type === 'Large') baseRadius = 12;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const layers: any[] = [];
 
-            const currentRadius = isVisible ? baseRadius + (yearsGrown * 0.5) : 0;
+    if (result && visibleLayers.has('cooling')) {
+      const heatmapData = result.cells.map((c) => ({
+        coordinates: [c.lng, c.lat] as [number, number],
+        weight: c.cooling_delta,
+      }));
 
-            return {
-                type: 'Feature',
-                properties: {
-                    id: tree.id,
-                    type: tree.type,
-                    radius: currentRadius,
-                    visible: isVisible
-                },
-                geometry: { type: 'Point', coordinates: [tree.lng, tree.lat] }
-            };
-        }).filter(f => f.properties.visible);
+      const maxCooling = Math.max(...result.cells.map((c) => c.cooling_delta), 0.001);
 
-        const data = {
-            type: 'FeatureCollection',
-            features: treeFeatures
-        };
+      layers.push(
+        new HeatmapLayer({
+          id: 'cooling-heatmap',
+          data: heatmapData,
+          getPosition: (d: { coordinates: [number, number]; weight: number }) =>
+            d.coordinates,
+          getWeight: (d: { coordinates: [number, number]; weight: number }) =>
+            d.weight,
+          colorDomain: [0, maxCooling] as [number, number],
+          colorRange: [
+            [236, 245, 251, 255],
+            [144, 213, 235, 255],
+            [29, 158, 117, 255],
+            [186, 117, 23, 255],
+            [216, 90, 48, 255],
+          ] as [number, number, number, number][],
+          radiusPixels: 40,
+          intensity: 1.2,
+          threshold: 0.03,
+        }),
+      );
+    }
 
-        const source = map.current.getSource('trees-source') as maplibregl.GeoJSONSource;
+    if (result && visibleLayers.has('trees')) {
+      const geojson = cellsToGeoJson(result.cells);
 
-        if (source) {
-            source.setData(data as any);
-        } else if (map.current.isStyleLoaded()) {
-            map.current.addSource('trees-source', {
-                type: 'geojson',
-                data: data as any
-            });
+      layers.push(
+        new GeoJsonLayer({
+          id: 'tree-cells',
+          data: geojson,
+          filled: true,
+          stroked: true,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          getFillColor: (f: any) => colorByDominantType(f.properties),
+          getLineColor: [255, 255, 255, 120] as [number, number, number, number],
+          lineWidthMinPixels: 0.5,
+          pickable: true,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onHover: (info: any) => {
+            setHoveredCell(info.object ? info.object.properties : null);
+          },
+        }),
+      );
+    }
 
-            map.current.addLayer({
-                id: 'trees-layer',
-                type: 'circle',
-                source: 'trees-source',
-                paint: {
-                    'circle-radius': ['get', 'radius'],
-                    'circle-color': '#059669',
-                    'circle-stroke-width': 2,
-                    'circle-stroke-color': '#ffffff',
-                    'circle-opacity': 0.9
-                }
-            });
-        }
-    }, [trees, timeHorizon, mapLoaded]);
+    overlay.current.setProps({ layers });
+  }, [result, visibleLayers, mapLoaded, setHoveredCell]);
 
-    return (
-        <div className="absolute inset-0 w-full h-full bg-slate-100 relative">
-            <div ref={mapContainer} className="absolute inset-0" />
+  return (
+    <div className="absolute inset-0 w-full h-full">
+      <div ref={mapContainer} className="absolute inset-0" />
 
-            {/* Optimization Status Overlay */}
-            {isOptimizing && (
-                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-30 flex flex-col items-center justify-center transition-all duration-300">
-                    <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center border border-slate-100 flex flex-col items-center">
-                        <div className="w-12 h-12 border-4 border-slate-200 border-t-planning-accent rounded-full animate-spin mb-4 shadow-sm" />
-                        <h3 className="text-lg font-bold text-slate-800 mb-1">Computing Optimal Scenario</h3>
-                        <p className="text-sm text-slate-500">
-                            Simulating heat reduction and finding optimal placements based on your budget constraints...
-                        </p>
-                    </div>
-                </div>
-            )}
+      {/* Loading overlay while job runs */}
+      {(jobStatus === 'pending' || jobStatus === 'running') && (
+        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-30 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center flex flex-col items-center">
+            <div className="w-12 h-12 border-4 border-slate-200 border-t-green-600 rounded-full animate-spin mb-4" />
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Running optimization</h3>
+            <p className="text-sm text-slate-500">
+              Gurobi is solving the planting model. This may take up to 2 minutes for full
+              Houston.
+            </p>
+          </div>
         </div>
-    );
+      )}
+
+      {/* Cell hover tooltip */}
+      {hoveredCell && <CellTooltip cell={hoveredCell} />}
+    </div>
+  );
 };
 
 export default MapView;

@@ -1,4 +1,3 @@
-import React from 'react';
 import MapView from './components/MapView';
 import ControlPanel from './components/ControlPanel';
 import MetricsPanel from './components/MetricsPanel';
