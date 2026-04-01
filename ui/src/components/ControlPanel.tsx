@@ -1,6 +1,8 @@
 import { useOptimizeStore, TreeType } from '../store/useOptimizeStore';
 import { useJobPoller } from '../hooks/useJobPoller';
 import LayerToggle from './LayerToggle';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -60,6 +62,72 @@ const ControlPanel: React.FC = () => {
     useOptimizeStore.getState().reset();
   };
 
+  const handleDownloadPdf = () => {
+    const { result } = useOptimizeStore.getState();
+    if (!result) return;
+
+    const doc = new jsPDF();
+    const { summary, cells } = result;
+
+    // Title
+    doc.setFontSize(18);
+    doc.text('Urban Forestry Optimization Report', 14, 22);
+
+    // Summary section
+    doc.setFontSize(12);
+    doc.text('Optimization Summary:', 14, 32);
+    
+    const summaryData = [
+      ['Total Trees Selected', summary.total_trees.toString()],
+      ['Budget Used', `$${summary.budget_used.toLocaleString()}`],
+      ['Budget Remaining', `$${summary.budget_remaining.toLocaleString()}`],
+      ['Total Cells Planted', summary.total_cells.toString()],
+      ['Total Cooling Delta', `${summary.total_cooling_delta.toFixed(2)} °C`]
+    ];
+
+    if (summary.trees_by_type) {
+      Object.entries(summary.trees_by_type).forEach(([type, count]) => {
+        summaryData.push([`${type} Trees`, count.toString()]);
+      });
+    }
+
+    autoTable(doc, {
+      startY: 36,
+      head: [['Metric', 'Value']],
+      body: summaryData,
+      theme: 'grid',
+      headStyles: { fillColor: [34, 197, 94] }
+    });
+
+    // Tree coordinates section
+    const tableData = cells.map(cell => [
+      // Output rounded coordinates to represent the "same area" (cell)
+      cell.lat.toFixed(5),
+      cell.lng.toFixed(5),
+      cell.total_trees.toString(),
+      cell.trees_3gal.toString(),
+      cell.trees_5gal.toString(),
+      cell.trees_10gal.toString()
+    ]);
+
+    // get the Y position after the previous table
+    // @ts-ignore - jspdf-autotable adds lastAutoTable to doc
+    const finalY = doc.lastAutoTable?.finalY || 36;
+
+    doc.setFontSize(14);
+    doc.text('Tree Planting Locations & Breakdown', 14, finalY + 14);
+
+    autoTable(doc, {
+      startY: finalY + 18,
+      head: [['Latitude', 'Longitude', 'Total Trees', '3-Gal', '5-Gal', '10-Gal']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [34, 197, 94] }
+    });
+
+    doc.save('forestry-optimization-report.pdf');
+  };
+
   return (
     <aside className="w-72 bg-white border-l border-slate-200 flex flex-col overflow-y-auto shrink-0 z-20">
       <div className="p-4 space-y-5">
@@ -109,8 +177,8 @@ const ControlPanel: React.FC = () => {
         {/* Layer toggle (shown after result) */}
         {jobStatus === 'complete' && <LayerToggle />}
 
-        {/* Submit / cancel */}
-        <div>
+        {/* Submit / cancel / download */}
+        <div className="space-y-2">
           {!isRunning ? (
             <button
               onClick={handleSubmit}
@@ -124,6 +192,15 @@ const ControlPanel: React.FC = () => {
               className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
             >
               Cancel
+            </button>
+          )}
+          
+          {jobStatus === 'complete' && (
+            <button
+              onClick={handleDownloadPdf}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm transition-colors mt-2"
+            >
+              Download Report (PDF)
             </button>
           )}
         </div>
