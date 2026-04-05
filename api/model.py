@@ -5,11 +5,11 @@ from gurobipy import GRB
 import rasterio
 
 
-src = rasterio.open("texas_clipped.tif")
+
 #imp = src.read(1)
 imp = np.random.beta(a=2, b=2, size=(100, 150)) 
 
-src = rasterio.open("ForUSTree_2018_HighVeg_TreeCoverage.tif")
+
 #b = src.read(1)
 b = np.random.beta(a=2, b=5, size=(100, 150)) * 0.6
 
@@ -306,3 +306,4 @@ def forestry_mip(
         })
 
     return result
+
