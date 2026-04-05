@@ -104,6 +104,16 @@ def forestry_mip(
         [tree_inventory_limit_dict[name] for name in tree_type_names],
         dtype=float
     )
+    # Extract gallon capacity footprint from the tree name (e.g. '10gal' -> 10.0)
+    import re
+    capacities = []
+    for name in tree_type_names:
+        matches = re.findall(r'\d+', name)
+        if matches:
+            capacities.append(float(matches[0]))
+        else:
+            capacities.append(1.0)
+    capacities = np.array(capacities, dtype=float)
 
     # -----------------------------
     # Feasible planting mask
@@ -159,9 +169,10 @@ def forestry_mip(
         name="budget"
     )
 
+    # Capacity constraint based on physical size (gallons)
     model.addConstr(
-        x.sum(axis=2) <= max_trees_per_site * y,
-        name="maxTreesPerSite"
+        gp.quicksum(capacities[k] * x[:, :, k] for k in range(K)) <= max_trees_per_site * y,
+        name="maxCapacityPerSite"
     )
 
     model.addConstr(
