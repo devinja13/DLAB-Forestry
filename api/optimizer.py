@@ -126,7 +126,7 @@ def run_optimization(job_id: str, request: OptimizeRequest):
         # --- Build Gurobi model ---
         model = gp.Model("urban_forestry")
         model.setParam("OutputFlag", 0)
-        #model.setParam("TimeLimit", 120)
+        model.setParam("TimeLimit", 900)
 
         # x[i,j,k] = number of trees of type k at cell (i,j)
         x = model.addMVar((n, p, K), vtype=GRB.INTEGER, lb=0, name="x")
