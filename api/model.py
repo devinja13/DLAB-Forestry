@@ -13,6 +13,217 @@ imp = np.random.beta(a=2, b=2, size=(100, 150))
 #b = src.read(1)
 b = np.random.beta(a=2, b=5, size=(100, 150)) * 0.6
 
+
+# TREE PARAMETERS — FULL SUPPLIER DATA
+
+
+CELL_AREA = 2500  # 50m x 50m grid cell
+
+
+# MATERIAL COSTS
+
+
+material_cost = {
+
+    # ---------------- 3 GAL ----------------
+    "American Beautyberry 3gal": 11,
+    "Anacua 3gal": 12,
+    "Birch River 3gal": 12,
+    "Buttonbush 3gal": 11,
+    "Cedar Eastern Red 3gal": 14,
+    "Cypress Pond 3gal": 14,
+    "Dogwood Roughleaf 3gal": 14,
+    "Holly Deciduous Possumhaw 3gal": 12,
+    "Hornbeam American 3gal": 12,
+    "Mayhaw 3gal": 14,
+    "Oak Cherrybark 3gal": 11,
+    "Oak Chinquapin 3gal": 11,
+    "Oak Swamp Chestnut 3gal": 11,
+    "Pine Long needle 3gal": 12,
+    "Plum Chickasaw 3gal": 14,
+    "Sugarberry 3gal": 11,
+    "Tupelo Blackgum 3gal": 14,
+    "Viburnum Arrowwood 3gal": 14,
+    "Vitex Chase tree 3gal": 14,
+
+    # ---------------- 15 GAL ----------------
+    "Ash Green 15gal": 65,
+    "Bashem Light Pink 15gal": 65,
+    "Birch River 15gal": 65,
+    "Catawba purple 15gal": 65,
+    "Cherry Black 15gal": 65,
+    "Cypress Bald 15gal": 65,
+    "Dogwood Roughleaf 15gal": 65,
+    "Elm American 15gal": 65,
+    "Elm Cedar 15gal": 65,
+    "Elm Lacebark 15gal": 65,
+    "Holly Deciduous Possumhaw 15gal": 65,
+    "Holly Eagleston 15gal": 65,
+    "Holly Yaupon 15gal": 65,
+    "Magnolia Southern 15gal": 65,
+    "Magnolia Sweetbay 15gal": 65,
+    "Maple Drummond Red 15gal": 65,
+    "Mulberry Red 15gal": 65,
+    "Muskogee Lavender Pink 15gal": 65,
+    "Natchez White 15gal": 65,
+    "Oak Bur 15gal": 65,
+    "Oak Cherrybark 15gal": 65,
+    "Oak Chinquapin 15gal": 65,
+    "Oak Live 15gal": 65,
+    "Oak Monterrey White Mexican 15gal": 65,
+    "Oak Nuttall 15gal": 65,
+    "Oak Overcup 15gal": 65,
+    "Oak Shumard 15gal": 65,
+    "Oak Southern Red 15gal": 65,
+    "Oak Swamp Chestnut 15gal": 65,
+    "Oak Water 15gal": 65,
+    "Oak White 15gal": 65,
+    "Oak Willow 15gal": 65,
+    "Pecan Native 15gal": 65,
+    "Persimmon Common 15gal": 65,
+    "Pine Loblolly 15gal": 65,
+    "Pine Long needle 15gal": 65,
+    "Plum Mexican 15gal": 65,
+    "Redbud Eastern 15gal": 65,
+    "Sugarberry 15gal": 65,
+    "Sweetgum 15gal": 65,
+    "Sycamore American 15gal": 65,
+    "Tonto dark pink red-pink 15gal": 65,
+    "Tuscarora watermelon pink 15gal": 65,
+    "Vitex Chase tree 15gal": 65,
+
+    # ---------------- 30 GAL ----------------
+    "Cypress Bald 30gal": 150,
+    "Elm American 30gal": 150,
+    "Holly Yaupon 30gal": 150,
+    "Magnolia Southern 30gal": 160,
+    "Maple Drummond Red 30gal": 150,
+    "Oak Bur 30gal": 150,
+    "Oak Live 30gal": 150,
+    "Oak Swamp Chestnut 30gal": 150,
+    "Oak White 30gal": 150,
+    "Pine Loblolly 30gal": 150,
+    "Sycamore American 30gal": 150,
+    "Vitex Chase tree 30gal": 150,
+}
+
+
+# PLANTING COST (MODERATE COMMERCIAL)
+
+
+planting_cost = {}
+
+for name in material_cost:
+    if "3gal" in name:
+        planting_cost[name] = 53
+    elif "15gal" in name:
+        planting_cost[name] = 363
+    elif "30gal" in name:
+        planting_cost[name] = 463
+    else:
+        planting_cost[name] = 363
+
+
+# INVENTORY (FULL SUPPLIER MATCH)
+
+
+inventory = {
+    # 15 GAL
+    "Ash Green 15gal": 195,
+    "Bashem Light Pink 15gal": 50,
+    "Birch River 15gal": 138,
+    "Catawba purple 15gal": 50,
+    "Cherry Black 15gal": 35,
+    "Cypress Bald 15gal": 179,
+    "Dogwood Roughleaf 15gal": 70,
+    "Elm American 15gal": 0,
+    "Elm Cedar 15gal": 351,
+    "Elm Lacebark 15gal": 60,
+    "Holly Deciduous Possumhaw 15gal": 100,
+    "Holly Eagleston 15gal": 240,
+    "Holly Yaupon 15gal": 906,
+    "Magnolia Southern 15gal": 9,
+    "Magnolia Sweetbay 15gal": 78,
+    "Maple Drummond Red 15gal": 295,
+    "Mulberry Red 15gal": 42,
+    "Muskogee Lavender Pink 15gal": 50,
+    "Natchez White 15gal": 371,
+    "Oak Bur 15gal": 287,
+    "Oak Cherrybark 15gal": 75,
+    "Oak Chinquapin 15gal": 50,
+    "Oak Live 15gal": 999,
+    "Oak Monterrey White Mexican 15gal": 95,
+    "Oak Nuttall 15gal": 163,
+    "Oak Overcup 15gal": 126,
+    "Oak Shumard 15gal": 1174,
+    "Oak Southern Red 15gal": 20,
+    "Oak Swamp Chestnut 15gal": 176,
+    "Oak Water 15gal": 280,
+    "Oak White 15gal": 14,
+    "Oak Willow 15gal": 29,
+    "Pecan Native 15gal": 212,
+    "Persimmon Common 15gal": 98,
+    "Pine Loblolly 15gal": 8,
+    "Pine Long needle 15gal": 117,
+    "Plum Mexican 15gal": 30,
+    "Redbud Eastern 15gal": 35,
+    "Sugarberry 15gal": 8,
+    "Sweetgum 15gal": 12,
+    "Sycamore American 15gal": 14,
+    "Tonto dark pink red-pink 15gal": 50,
+    "Tuscarora watermelon pink 15gal": 50,
+    "Vitex Chase tree 15gal": 152,
+
+    # 30 GAL
+    "Cypress Bald 30gal": 19,
+    "Elm American 30gal": 24,
+    "Holly Yaupon 30gal": 87,
+    "Magnolia Southern 30gal": 17,
+    "Maple Drummond Red 30gal": 50,
+    "Oak Bur 30gal": 30,
+    "Oak Live 30gal": 785,
+    "Oak Swamp Chestnut 30gal": 10,
+    "Oak White 30gal": 11,
+    "Pine Loblolly 30gal": 58,
+    "Sycamore American 30gal": 61,
+    "Vitex Chase tree 30gal": 30,
+}
+
+# Default large inventory for 3gal species
+for k in material_cost:
+    if k not in inventory:
+        inventory[k] = 10**6
+
+# CANOPY AREA (m² by size class)
+
+canopy_area_m2 = {}
+
+for name in material_cost:
+    if "3gal" in name:
+        canopy_area_m2[name] = 20
+    elif "15gal" in name:
+        canopy_area_m2[name] = 50
+    elif "30gal" in name:
+        canopy_area_m2[name] = 113
+    else:
+        canopy_area_m2[name] = 50
+
+# FINAL DICTIONARIES USED BY MODEL
+
+tree_type_names = list(material_cost.keys())
+
+tree_cost_dict = {
+    k: material_cost[k] + planting_cost[k]
+    for k in tree_type_names
+}
+
+tree_canopy_gain_dict = {
+    k: canopy_area_m2[k] / CELL_AREA
+    for k in tree_type_names
+}
+
+tree_inventory_limit_dict = inventory
+
 def forestry_mip(
     budget,
     b,
