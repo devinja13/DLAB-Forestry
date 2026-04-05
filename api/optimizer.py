@@ -98,15 +98,6 @@ def run_optimization(job_id: str, request: OptimizeRequest):
         costs  = np.array([type_map[t]["cost"]  for t in allowed], dtype=float)
         gammas = np.array([type_map[t]["gamma"] for t in allowed], dtype=float)
         
-        # Determine capacity footprints
-        capacities = []
-        for t in allowed:
-            if t == TreeType.gal3: capacities.append(3)
-            elif t == TreeType.gal5: capacities.append(5)
-            elif t == TreeType.gal10: capacities.append(10)
-            else: capacities.append(1)
-        capacities = np.array(capacities, dtype=float)
-
         site_cost = 20
         max_trees_per_cell = 100
         imp_threshold = 0.85
@@ -144,9 +135,9 @@ def run_optimization(job_id: str, request: OptimizeRequest):
             tree_cost_total + site_cost * (ones_n @ y @ ones_p) <= request.budget
         )
 
-        # Site Capacity constraint (bounding total gallons to `max_trees_per_cell` capacity units)
-        capacity_used = sum(capacities[k] * x[:, :, k] for k in range(K))
-        model.addConstr(capacity_used <= max_trees_per_cell * y)
+        # Max trees per cell per type
+        for k in range(K):
+            model.addConstr(x[:, :, k] <= max_trees_per_cell * y)
 
         # Only plant in available cells
         model.addConstr(y <= a)
