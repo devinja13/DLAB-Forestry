@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from api.routers.optimize import router
-from api.optimizer import load_raster_data
+from api.model import load_raster_data
 
 
 @asynccontextmanager

@@ -1,9 +1,15 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from api.models import OptimizeRequest, SubmitResponse, JobStatusResponse
+from api.model import run_optimization
+from api.models import JobStatusResponse, OptimizeRequest, SubmitResponse, TreeOption
 import api.job_store as job_store
-from api.optimizer import run_optimization
+from api.tree_catalog import load_tree_catalog
 
 router = APIRouter(prefix="/api", tags=["optimize"])
+
+
+@router.get("/tree-options", response_model=list[TreeOption])
+async def get_tree_options():
+    return load_tree_catalog()
 
 
 @router.post("/optimize", response_model=SubmitResponse)
