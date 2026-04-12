@@ -26,22 +26,35 @@ const MetricsPanel: React.FC = () => {
   const metrics = [
     { label: 'Trees planted', value: s.total_trees.toLocaleString() },
     { label: 'Cells used', value: s.total_cells.toLocaleString() },
+    { label: 'Cell size', value: `${s.cell_size_m}m` },
     { label: 'Budget used', value: `$${s.budget_used.toLocaleString()}` },
     { label: 'Budget remaining', value: `$${s.budget_remaining.toLocaleString()}` },
-    { label: 'Total cooling', value: `\u2013${s.total_cooling_delta.toFixed(2)} \u00b0C` },
+    { label: 'Total cooling', value: `-${s.total_cooling_delta.toFixed(2)} \u00b0C` },
     { label: 'Solve time', value: `${s.runtime_s}s` },
   ];
 
   return (
-    <div className="flex border-t border-slate-200 bg-white h-16 divide-x divide-slate-100">
-      {metrics.map((m) => (
-        <div key={m.label} className="flex-1 flex flex-col justify-center px-4">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
-            {m.label}
-          </span>
-          <span className="text-sm font-bold text-slate-800">{m.value}</span>
+    <div className="border-t border-slate-200 bg-white">
+      <div className="flex h-16 divide-x divide-slate-100">
+        {metrics.map((m) => (
+          <div key={m.label} className="flex-1 flex flex-col justify-center px-4">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+              {m.label}
+            </span>
+            <span className="text-sm font-bold text-slate-800">{m.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {s.regions.length > 0 && (
+        <div className="border-t border-slate-100 px-4 py-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
+          {s.regions.map((region) => (
+            <span key={region.id}>
+              {region.name}: {region.total_trees.toLocaleString()} trees
+            </span>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 };

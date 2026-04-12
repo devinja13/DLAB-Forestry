@@ -25,6 +25,9 @@ export function useJobPoller() {
         if (data.status === 'complete') {
           setResult(data.result);
           clearInterval(intervalRef.current!);
+        } else if (data.status === 'cancelled') {
+          setJobStatus('cancelled');
+          clearInterval(intervalRef.current!);
         } else if (data.status === 'failed') {
           setError(data.error ?? 'Optimization failed');
           clearInterval(intervalRef.current!);

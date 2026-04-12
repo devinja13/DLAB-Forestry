@@ -1,32 +1,69 @@
 import { create } from 'zustand';
 
-export type TreeType = '3gal' | '5gal' | '10gal';
-export type LayerType = 'trees' | 'cooling';
-export type JobStatus = 'idle' | 'pending' | 'running' | 'complete' | 'failed';
+export type LayerType = 'trees' | 'cooling' | 'regions';
+export type JobStatus = 'idle' | 'pending' | 'running' | 'complete' | 'failed' | 'cancelled';
+
+export interface Bbox {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+export interface TreeOption {
+  tree_option_id: string;
+  common_name: string;
+  scientific_name: string;
+  size_label: string;
+  size_gallon: number | null;
+  size_caliper_inches: number | null;
+  size_classification: string;
+  estimated_diameter_m: number;
+  estimated_canopy_m: number;
+  cost_usd: number;
+  inventory: number;
+  canopy_gain: number;
+}
+
+export interface RegionConstraint {
+  id: string;
+  name: string;
+  bbox: Bbox;
+  total_trees_exact: number | null;
+  total_trees_min: number | null;
+  total_trees_max: number | null;
+}
 
 export interface CellResult {
   lng: number;
   lat: number;
-  bbox: [number, number, number, number]; // [west, south, east, north]
-  trees_3gal: number;
-  trees_5gal: number;
-  trees_10gal: number;
+  bbox: [number, number, number, number];
+  tree_counts: Record<string, number>;
   total_trees: number;
   total_cost: number;
   cooling_delta: number;
   canopy_gain: number;
   imperviousness: number;
+  dominant_tree_option_id?: string | null;
+}
+
+export interface RegionSummary {
+  id: string;
+  name: string;
+  total_trees: number;
 }
 
 export interface OptimizeSummary {
   status: string;
   runtime_s: number;
+  cell_size_m: number;
   total_cells: number;
   total_trees: number;
   budget_used: number;
   budget_remaining: number;
   total_cooling_delta: number;
   trees_by_type: Record<string, number>;
+  regions: RegionSummary[];
 }
 
 export interface OptimizeResult {
@@ -35,55 +72,108 @@ export interface OptimizeResult {
 }
 
 interface OptimizeStore {
-  // Inputs
   budget: number;
-  allowedTreeTypes: TreeType[];
-  // Job state
+  cellSizeM: 50 | 100 | 200;
+  treeOptions: TreeOption[];
+  selectedTreeOptionIds: string[];
+  regions: RegionConstraint[];
+  isDrawingRegion: boolean;
   jobId: string | null;
   jobStatus: JobStatus;
   progress: number;
   error: string | null;
-  // Result
   result: OptimizeResult | null;
-  // Map
   visibleLayers: Set<LayerType>;
   hoveredCell: CellResult | null;
-  // Actions
-  setBudget: (b: number) => void;
-  toggleTreeType: (t: TreeType) => void;
-  setJobId: (id: string) => void;
-  setJobStatus: (s: JobStatus) => void;
-  setProgress: (p: number) => void;
-  setResult: (r: OptimizeResult) => void;
-  setError: (e: string) => void;
-  toggleLayer: (l: LayerType) => void;
-  setHoveredCell: (c: CellResult | null) => void;
+  setBudget: (budget: number) => void;
+  setCellSizeM: (cellSizeM: 50 | 100 | 200) => void;
+  setTreeOptions: (options: TreeOption[]) => void;
+  toggleTreeOption: (treeOptionId: string) => void;
+  addRegion: (bbox: Bbox) => void;
+  updateRegion: (id: string, patch: Partial<RegionConstraint>) => void;
+  removeRegion: (id: string) => void;
+  setDrawingRegion: (isDrawing: boolean) => void;
+  setJobId: (jobId: string) => void;
+  setJobStatus: (jobStatus: JobStatus) => void;
+  setProgress: (progress: number) => void;
+  setResult: (result: OptimizeResult) => void;
+  setError: (error: string) => void;
+  toggleLayer: (layer: LayerType) => void;
+  setHoveredCell: (cell: CellResult | null) => void;
   reset: () => void;
 }
 
 export const useOptimizeStore = create<OptimizeStore>((set) => ({
   budget: 1_000_000,
-  allowedTreeTypes: ['3gal', '5gal', '10gal'],
+  cellSizeM: 100,
+  treeOptions: [],
+  selectedTreeOptionIds: [],
+  regions: [],
+  isDrawingRegion: false,
   jobId: null,
   jobStatus: 'idle',
   progress: 0,
   error: null,
   result: null,
-  visibleLayers: new Set<LayerType>(['trees', 'cooling']),
+  visibleLayers: new Set<LayerType>(['trees', 'cooling', 'regions']),
   hoveredCell: null,
 
   setBudget: (budget) => set({ budget }),
+  setCellSizeM: (cellSizeM) => set({ cellSizeM }),
 
-  toggleTreeType: (type) =>
+  setTreeOptions: (treeOptions) =>
+    set((state) => ({
+      treeOptions,
+      selectedTreeOptionIds:
+        state.selectedTreeOptionIds.length > 0
+          ? state.selectedTreeOptionIds.filter((id) =>
+              treeOptions.some((option) => option.tree_option_id === id),
+            )
+          : treeOptions.map((option) => option.tree_option_id),
+    })),
+
+  toggleTreeOption: (treeOptionId) =>
     set((state) => {
-      const types = new Set(state.allowedTreeTypes);
-      if (types.has(type) && types.size > 1) {
-        types.delete(type);
+      const ids = new Set(state.selectedTreeOptionIds);
+      if (ids.has(treeOptionId) && ids.size > 1) {
+        ids.delete(treeOptionId);
       } else {
-        types.add(type);
+        ids.add(treeOptionId);
       }
-      return { allowedTreeTypes: Array.from(types) as TreeType[] };
+      return { selectedTreeOptionIds: Array.from(ids) };
     }),
+
+  addRegion: (bbox) =>
+    set((state) => {
+      const next = state.regions.length + 1;
+      return {
+        regions: [
+          ...state.regions,
+          {
+            id: `region_${next}`,
+            name: `Region ${next}`,
+            bbox,
+            total_trees_exact: 500,
+            total_trees_min: null,
+            total_trees_max: null,
+          },
+        ],
+      };
+    }),
+
+  updateRegion: (id, patch) =>
+    set((state) => ({
+      regions: state.regions.map((region) =>
+        region.id === id ? { ...region, ...patch } : region,
+      ),
+    })),
+
+  removeRegion: (id) =>
+    set((state) => ({
+      regions: state.regions.filter((region) => region.id !== id),
+    })),
+
+  setDrawingRegion: (isDrawingRegion) => set({ isDrawingRegion }),
 
   setJobId: (jobId) =>
     set({ jobId, jobStatus: 'pending', progress: 0, error: null, result: null }),
@@ -104,6 +194,35 @@ export const useOptimizeStore = create<OptimizeStore>((set) => ({
     }),
 
   setHoveredCell: (hoveredCell) => set({ hoveredCell }),
+
   reset: () =>
-    set({ jobId: null, jobStatus: 'idle', progress: 0, error: null, result: null }),
+    set((state) => ({
+      jobId: null,
+      jobStatus: 'idle',
+      progress: 0,
+      error: null,
+      result: null,
+      hoveredCell: null,
+      isDrawingRegion: false,
+      regions: state.regions,
+      treeOptions: state.treeOptions,
+      selectedTreeOptionIds: state.selectedTreeOptionIds,
+      budget: state.budget,
+      cellSizeM: state.cellSizeM,
+      visibleLayers: state.visibleLayers,
+    })),
 }));
+
+export function getTreeOptionLabel(option: TreeOption) {
+  return `${option.common_name} (${option.size_label})`;
+}
+
+export function getTreeOptionMap() {
+  const treeOptions = useOptimizeStore.getState().treeOptions;
+  return Object.fromEntries(treeOptions.map((option) => [option.tree_option_id, option]));
+}
+
+export function getSelectedTreeOptions() {
+  const { treeOptions, selectedTreeOptionIds } = useOptimizeStore.getState();
+  return treeOptions.filter((option) => selectedTreeOptionIds.includes(option.tree_option_id));
+}

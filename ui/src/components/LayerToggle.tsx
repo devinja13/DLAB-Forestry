@@ -3,6 +3,7 @@ import { useOptimizeStore, LayerType } from '../store/useOptimizeStore';
 const LAYERS: { id: LayerType; label: string; color: string }[] = [
   { id: 'trees', label: 'Tree placement', color: 'bg-green-600' },
   { id: 'cooling', label: 'Cooling effect', color: 'bg-blue-500' },
+  { id: 'regions', label: 'Selected regions', color: 'bg-amber-500' },
 ];
 
 const LayerToggle: React.FC = () => {

@@ -1,24 +1,26 @@
 import { CellResult } from '../store/useOptimizeStore';
 
-// Returns an RGBA tuple [R, G, B, A] based on dominant tree type
+const PALETTE: [number, number, number, number][] = [
+  [22, 163, 74, 210],
+  [21, 128, 61, 210],
+  [30, 64, 175, 210],
+  [180, 83, 9, 210],
+  [168, 85, 247, 210],
+  [14, 116, 144, 210],
+];
+
+function colorHash(key: string) {
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
 export function colorByDominantType(
   cell: CellResult,
 ): [number, number, number, number] {
-  const counts: Record<string, number> = {
-    '3gal': cell.trees_3gal,
-    '5gal': cell.trees_5gal,
-    '10gal': cell.trees_10gal,
-  };
-  const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-
-  switch (dominant) {
-    case '3gal':
-      return [144, 238, 144, 200]; // light green
-    case '5gal':
-      return [34, 139, 34, 210]; // medium green
-    case '10gal':
-      return [0, 80, 0, 220]; // dark green
-    default:
-      return [100, 180, 100, 180];
-  }
+  const dominantEntry = Object.entries(cell.tree_counts).sort((a, b) => b[1] - a[1])[0];
+  if (!dominantEntry) return [100, 180, 100, 180];
+  return PALETTE[colorHash(dominantEntry[0]) % PALETTE.length];
 }

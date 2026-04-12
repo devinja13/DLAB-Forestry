@@ -27,10 +27,13 @@ _imperv: np.ndarray | None = None
 _transform = None
 _coord_transformer: Transformer | None = None
 _inverse_transformer: Transformer | None = None
+_native_cell_size_m: float | None = None
+
+VALID_CELL_SIZES = {50, 100, 200}
 
 
 def load_raster_data():
-    global _canopy, _imperv, _transform, _coord_transformer, _inverse_transformer
+    global _canopy, _imperv, _transform, _coord_transformer, _inverse_transformer, _native_cell_size_m
 
     if _canopy is not None and _imperv is not None:
         return
@@ -39,6 +42,7 @@ def load_raster_data():
         _canopy = src.read(1).astype(np.float32)
         _transform = src.transform
         raster_crs = src.crs
+        _native_cell_size_m = float(src.res[0])
 
     with rasterio.open(IMPERV_PATH) as src:
         _imperv = src.read(1).astype(np.float32)
@@ -69,12 +73,72 @@ def _cell_to_wgs84(row: int, col: int):
     return lng, lat, bbox
 
 
+def _validate_cell_size(cell_size_m: int) -> int:
+    if cell_size_m not in VALID_CELL_SIZES:
+        raise ValueError(f"Unsupported cell size '{cell_size_m}'. Choose one of {sorted(VALID_CELL_SIZES)}.")
+    return cell_size_m
+
+
+def _aggregation_factor(cell_size_m: int) -> int:
+    target = _validate_cell_size(cell_size_m)
+    factor = round(target / _native_cell_size_m)
+    return max(1, factor)
+
+
+def _aggregate_grid(grid: np.ndarray, factor: int, mode: str) -> np.ndarray:
+    if factor == 1:
+        return grid
+
+    rows, cols = grid.shape
+    new_rows = (rows + factor - 1) // factor
+    new_cols = (cols + factor - 1) // factor
+    pad_rows = new_rows * factor - rows
+    pad_cols = new_cols * factor - cols
+    padded = np.pad(grid, ((0, pad_rows), (0, pad_cols)), constant_values=np.nan)
+    reshaped = padded.reshape(new_rows, factor, new_cols, factor)
+
+    if mode == "mean":
+        return np.nanmean(reshaped, axis=(1, 3))
+    if mode == "max":
+        return np.nanmax(reshaped, axis=(1, 3))
+
+    raise ValueError(f"Unsupported aggregation mode '{mode}'.")
+
+
+def _aggregated_cell_geometry(
+    full_row_start: int,
+    full_row_end: int,
+    full_col_start: int,
+    full_col_end: int,
+):
+    x_left = _transform.c + full_col_start * _transform.a
+    x_right = _transform.c + (full_col_end + 1) * _transform.a
+    y_top = _transform.f + full_row_start * _transform.e
+    y_bottom = _transform.f + (full_row_end + 1) * _transform.e
+
+    corners_proj = [
+        (x_left, y_top),
+        (x_right, y_top),
+        (x_right, y_bottom),
+        (x_left, y_bottom),
+    ]
+    corners_wgs84 = [_coord_transformer.transform(x, y) for x, y in corners_proj]
+    lngs = [corner[0] for corner in corners_wgs84]
+    lats = [corner[1] for corner in corners_wgs84]
+
+    bbox = [min(lngs), min(lats), max(lngs), max(lats)]
+    lng = (bbox[0] + bbox[2]) / 2
+    lat = (bbox[1] + bbox[3]) / 2
+    return lng, lat, bbox
+
+
 def _region_cells_from_bbox(
     region_bbox: RegionBbox,
     global_row_min: int,
     global_row_max: int,
     global_col_min: int,
     global_col_max: int,
+    factor: int,
 ) -> list[tuple[int, int]]:
     row_min, row_max, col_min, col_max = _bbox_to_rowcol(region_bbox)
 
@@ -86,10 +150,15 @@ def _region_cells_from_bbox(
     if row_min > row_max or col_min > col_max:
         return []
 
+    agg_row_min = (row_min - global_row_min) // factor
+    agg_row_max = (row_max - global_row_min) // factor
+    agg_col_min = (col_min - global_col_min) // factor
+    agg_col_max = (col_max - global_col_min) // factor
+
     return [
-        (row - global_row_min, col - global_col_min)
-        for row in range(row_min, row_max + 1)
-        for col in range(col_min, col_max + 1)
+        (row, col)
+        for row in range(agg_row_min, agg_row_max + 1)
+        for col in range(agg_col_min, agg_col_max + 1)
     ]
 
 
@@ -270,10 +339,13 @@ def run_optimization(job_id: str, request: OptimizeRequest):
 
     try:
         job_store.set_running(job_id)
+        factor = _aggregation_factor(request.cell_size_m)
 
         row_min, row_max, col_min, col_max = _bbox_to_rowcol(request.region)
-        canopy_grid = _canopy[row_min : row_max + 1, col_min : col_max + 1]
-        imperv_grid = _imperv[row_min : row_max + 1, col_min : col_max + 1]
+        native_canopy = _canopy[row_min : row_max + 1, col_min : col_max + 1]
+        native_imperv = _imperv[row_min : row_max + 1, col_min : col_max + 1]
+        canopy_grid = _aggregate_grid(native_canopy, factor, "mean")
+        imperv_grid = _aggregate_grid(native_imperv, factor, "mean")
 
         job_store.set_progress(job_id, 5)
         if job_store.is_cancelled(job_id):
@@ -290,7 +362,14 @@ def run_optimization(job_id: str, request: OptimizeRequest):
         selected_regions = {}
         region_requirements = {}
         for region in request.selected_regions:
-            cells = _region_cells_from_bbox(region.bbox, row_min, row_max, col_min, col_max)
+            cells = _region_cells_from_bbox(
+                region.bbox,
+                row_min,
+                row_max,
+                col_min,
+                col_max,
+                factor,
+            )
             selected_regions[region.id] = cells
             region_requirements[region.id] = {
                 "total_trees_exact": region.total_trees_exact,
@@ -313,6 +392,7 @@ def run_optimization(job_id: str, request: OptimizeRequest):
             },
             selected_regions=selected_regions,
             region_requirements=region_requirements,
+            max_trees_per_site=100 * (factor ** 2),
         )
 
         job_store.set_progress(job_id, 90)
@@ -367,9 +447,16 @@ def run_optimization(job_id: str, request: OptimizeRequest):
                 )
                 total_cooling += cell_cooling
 
-                full_row = row_min + i
-                full_col = col_min + j
-                lng, lat, bbox = _cell_to_wgs84(full_row, full_col)
+                full_row_start = row_min + i * factor
+                full_col_start = col_min + j * factor
+                full_row_end = min(row_min + (i + 1) * factor - 1, row_max)
+                full_col_end = min(col_min + (j + 1) * factor - 1, col_max)
+                lng, lat, bbox = _aggregated_cell_geometry(
+                    full_row_start,
+                    full_row_end,
+                    full_col_start,
+                    full_col_end,
+                )
                 dominant = max(tree_counts.items(), key=lambda item: item[1])[0]
 
                 cells.append(
@@ -391,6 +478,7 @@ def run_optimization(job_id: str, request: OptimizeRequest):
         summary = OptimizeSummary(
             status=solution["status"].lower(),
             runtime_s=runtime,
+            cell_size_m=request.cell_size_m,
             total_cells=len(cells),
             total_trees=solution["total_trees"],
             budget_used=round(solution["total_cost"], 2),

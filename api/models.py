@@ -36,6 +36,7 @@ class OptimizeRequest(BaseModel):
     tree_option_ids: list[str] = Field(min_length=1)
     region: RegionBbox
     selected_regions: list[RegionConstraintRequest] = Field(default_factory=list)
+    cell_size_m: int = Field(default=100)
 
 
 class TreeOption(BaseModel):
@@ -75,6 +76,7 @@ class RegionSummary(BaseModel):
 class OptimizeSummary(BaseModel):
     status: str
     runtime_s: float
+    cell_size_m: int
     total_cells: int
     total_trees: int
     budget_used: float
